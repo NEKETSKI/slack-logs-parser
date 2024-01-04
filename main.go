@@ -12,9 +12,11 @@ import (
 	"os"
 )
 
-const csvHeader = "IP Address"
-const fieldsCountry = "country"
-const url = "http://ip-api.com/batch"
+const (
+	csvHeader     = "IP Address"
+	fieldsCountry = "country"
+	url           = "http://ip-api.com/batch"
+)
 
 type country struct {
 	Country string `json:"country"`
