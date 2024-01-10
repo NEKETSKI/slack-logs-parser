@@ -15,12 +15,14 @@ import (
 )
 
 const (
-	fieldsCountry = "country"
-	url           = "http://ip-api.com/batch"
+	queryFields = "country,query"
+	url         = "http://ip-api.com/batch"
+	privateIP   = "Private IP"
 )
 
 type country struct {
 	Country string `json:"country"`
+	Query   string `json:"query"`
 }
 
 type ipToCheck struct {
@@ -44,6 +46,7 @@ func main() {
 	}
 
 	uniqIPs := getUniqIPs(records)
+	fmt.Printf("Found %d unique IP\n", len(uniqIPs))
 	payload, err := prepareRequestPayload(uniqIPs)
 	if err != nil {
 		log.Fatalf("failed to prepare request payload: %s", err.Error())
@@ -54,7 +57,8 @@ func main() {
 		log.Fatalf("failed to get location by IPs list: %s", err.Error())
 	}
 
-	fmt.Println(countries)
+	countriesWithIP := parseIPAPIResponse(countries)
+	prettyPrint(countriesWithIP)
 }
 
 func readCSVFile(filePath string) ([][]string, error) {
@@ -111,7 +115,7 @@ func getUniqIPs(records [][]string) (IPs []string) {
 func prepareRequestPayload(IPs []string) ([]byte, error) {
 	list := make([]ipToCheck, len(IPs))
 	for i := range IPs {
-		list[i].Fields = fieldsCountry
+		list[i].Fields = queryFields
 		list[i].Query = IPs[i]
 	}
 
@@ -123,7 +127,7 @@ func prepareRequestPayload(IPs []string) ([]byte, error) {
 	return payload, nil
 }
 
-func getCountryByIP(payload []byte) ([]string, error) {
+func getCountryByIP(payload []byte) ([]country, error) {
 	payloadStream := bytes.NewReader(payload)
 
 	client := &http.Client{}
@@ -151,10 +155,25 @@ func getCountryByIP(payload []byte) ([]string, error) {
 		return nil, fmt.Errorf("failed to unmarshal body: %w", err)
 	}
 
-	list := make([]string, len(countries))
+	return countries, nil
+
+}
+
+func parseIPAPIResponse(countries []country) map[string][]string {
+	list := make(map[string][]string)
+
 	for i := range countries {
-		list[i] = countries[i].Country
+		if countries[i].Country == "" {
+			countries[i].Country = privateIP
+		}
+		list[countries[i].Country] = append(list[countries[i].Country], countries[i].Query)
 	}
 
-	return list, nil
+	return list
+}
+
+func prettyPrint(list map[string][]string) {
+	for cnt, IPs := range list {
+		fmt.Printf("%s - [%s]\n", cnt, strings.Join(IPs, ", "))
+	}
 }
