@@ -47,12 +47,8 @@ func main() {
 
 	uniqIPs := getUniqIPs(records)
 	fmt.Printf("Found %d unique IP\n", len(uniqIPs))
-	payload, err := prepareRequestPayload(uniqIPs)
-	if err != nil {
-		log.Fatalf("failed to prepare request payload: %s", err.Error())
-	}
 
-	countries, err := getCountryByIP(payload)
+	countries, err := getCountryByIP(uniqIPs)
 	if err != nil {
 		log.Fatalf("failed to get location by IPs list: %s", err.Error())
 	}
@@ -127,35 +123,50 @@ func prepareRequestPayload(IPs []string) ([]byte, error) {
 	return payload, nil
 }
 
-func getCountryByIP(payload []byte) ([]country, error) {
-	payloadStream := bytes.NewReader(payload)
-
+func getCountryByIP(ips []string) ([]country, error) {
 	client := &http.Client{}
-	req, err := http.NewRequest(http.MethodPost, url, payloadStream)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	var allCountries []country
+
+	for i := 0; i < (len(ips)/100)+1; i++ {
+		from, to := i*100, i*100+100
+		if i == len(ips)/100 {
+			to = len(ips)
+		}
+		payload, err := prepareRequestPayload(ips[from:to])
+		if err != nil {
+			log.Fatalf("failed to prepare request payload in range from %d to %d: %s", from, to, err.Error())
+		}
+
+		payloadStream := bytes.NewReader(payload)
+
+		req, err := http.NewRequest(http.MethodPost, url, payloadStream)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create request in range from %d to %d: %w", from, to, err)
+		}
+
+		req.Header.Add("Content-Type", "application/json")
+
+		res, err := client.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("failed to make request in range from %d to %d: %w", from, to, err)
+		}
+		defer res.Body.Close()
+
+		body, err := io.ReadAll(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read response body in ragne from %d to %d: %w", from, to, err)
+		}
+
+		var countries []country
+		err = json.Unmarshal(body, &countries)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal body in range from %d to %d: %w", from, to, err)
+		}
+
+		allCountries = append(allCountries, countries...)
 	}
 
-	req.Header.Add("Content-Type", "application/json")
-
-	res, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer res.Body.Close()
-
-	body, err := io.ReadAll(res.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	var countries []country
-	err = json.Unmarshal(body, &countries)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal body: %w", err)
-	}
-
-	return countries, nil
+	return allCountries, nil
 
 }
 
